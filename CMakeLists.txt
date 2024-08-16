@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.6 FATAL_ERROR)
 cmake_policy(VERSION 3.6)
-project(DirectX12Seed
+project(DirectX12SandBox
         VERSION 1.0.0.0
         LANGUAGES C CXX
 )
@@ -12,11 +12,12 @@ project(DirectX12Seed
 # CMake Settings
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set(CMAKE_SUPPRESS_REGENERATION true)
+# set(CMAKE_SUPPRESS_REGENERATION true)
 set(DCMAKE_GENERATOR_PLATFORM "x64")
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS ON)
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin)
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
@@ -28,10 +29,11 @@ if(NOT CMAKE_DEBUG_POSTFIX)
   set(CMAKE_DEBUG_POSTFIX d)
 endif()
 
+add_definitions(-DNOMINMAX)
+
 # =============================================================
 
 # Options
-
 set(XGFX_API DIRECTX12 CACHE STRING "Which graphics API to use, defaults to AUTO, can be NOOP, VULKAN, OPENGL, DIRECTX12, or METAL.")
 set_property(
     CACHE
@@ -43,20 +45,46 @@ set_property(
 
 # Dependencies
 
+
 # CrossWindow
 message(STATUS "Installing crosswindow via submodule")
 add_subdirectory(external/crosswindow)
 set_property(TARGET CrossWindow PROPERTY FOLDER "Dependencies")
 
+
 # CrossWindow-Graphics
 message(STATUS "Installing crosswindow-graphics via submodule")
 add_subdirectory(external/crosswindow-graphics)
+
+
+
 
 # GLM
 message(STATUS "Installing glm via submodule")
 set(BUILD_STATIC_LIBS ON)
 add_subdirectory(external/glm/glm)
 set_property(TARGET glm_static PROPERTY FOLDER "Dependencies")
+
+# FastGltf
+message(STATUS "Installing fastgltf via submodule")
+set(BUILD_STATIC_LIBS ON)
+add_subdirectory(external/fastgltf)
+set_property(TARGET fastgltf PROPERTY FOLDER "Dependencies")
+set_property(TARGET fastgltf_simdjson PROPERTY FOLDER "Dependencies")
+
+# Stb image
+message(STATUS "Installing stb image as header only lib")
+add_library(stb_image INTERFACE)
+target_include_directories(stb_image INTERFACE external/stb_image)
+
+# Dxc compiler
+message(STATUS "Installing dxc compiler as header only lib")
+add_library(dxc INTERFACE)
+
+target_include_directories(dxc INTERFACE external/dxc/include)
+target_link_directories(dxc INTERFACE external/dxc/lib) 
+target_link_libraries(dxc INTERFACE dxcompiler.lib) 
+
 
 # =============================================================
 
@@ -91,23 +119,36 @@ xwin_add_executable(
 
 target_link_libraries(
     ${PROJECT_NAME}
+    PRIVATE
     CrossWindowGraphics
     CrossWindow
     glm_static
+    fastgltf
+    stb_image
+    dxc
 )
+
 
 target_include_directories(
   ${PROJECT_NAME}
   PUBLIC external/glm
+  PUBLIC external/fastgltf
+  PUBLIC external/stb_image
+  PUBLIC external/dxc/include
 )
+
+
 
 add_dependencies(
     ${PROJECT_NAME}
     CrossWindowGraphics
     CrossWindow
     glm_static
-    
+    fastgltf
+    stb_image
+    dxc
 )
+
 
 target_compile_definitions(
   ${PROJECT_NAME} 
