@@ -1,16 +1,15 @@
 #include "FrameResource.h"
 
-   //**********************************************************************************
-    // frames infight(2) < back buffer count(3)
-    // frames           :0 1 2 3 4 5 6 7 8
-    // frames(modulo)   :0 1 0 1 0 1 0 1 0
-    // backbuffer index :0 1 2 0 1 2 0 1 2... ...
+//**********************************************************************************
+// frames infight(2) < back buffer count(3)
+// frames           :0 1 2 3 4 5 6 7 8
+// frames(modulo)   :0 1 0 1 0 1 0 1 0
+// backbuffer index :0 1 2 0 1 2 0 1 2... ...
 
-    // frames infight(3) > back buffer count(2)
-    // frames           :0 1 2 3 4 5 6 7 8
-    // frames(modulo)   :0 1 2 0 1 2 0 1 2
-    // backbuffer index :0 1 0 1 0 1 0 1 0
-
+// frames infight(3) > back buffer count(2)
+// frames           :0 1 2 3 4 5 6 7 8
+// frames(modulo)   :0 1 2 0 1 2 0 1 2
+// backbuffer index :0 1 0 1 0 1 0 1 0
 
 // Renderer
 namespace Anni {
@@ -75,7 +74,7 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
     }
 
     OnUpdatePerFrame();
- 
+
     // GET BACK BUFFER INDEX:
     // GetCurrentBackBufferIndex: It's just a counter that increments every time you call Present()
     const UINT64 current_back_buffer_index = m_pp_swapChain->GetCurrentBackBufferIndex();
@@ -124,18 +123,37 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
     p_command_list->SetGraphicsRootConstantBufferView(1, m_sceneConstantBuffer->GetGPUVirtualAddress());
     p_command_list->SetGraphicsRootConstantBufferView(2, m_lightConstantBuffer->GetGPUVirtualAddress());
 
-    p_command_list->RSSetViewports(1, &m_viewPort);
-    p_command_list->RSSetScissorRects(1, &m_scissorRect);
+    D3D12_VIEWPORT shadow_mapping_viewport;
+
+    shadow_mapping_viewport.TopLeftX = 0.0f;
+    shadow_mapping_viewport.TopLeftY = 0.0f;
+    shadow_mapping_viewport.Width = static_cast<float>(m_viewPort.Width);
+    shadow_mapping_viewport.Height = static_cast<float>(m_viewPort.Width);
+
+    shadow_mapping_viewport.MinDepth = 0.f;
+    shadow_mapping_viewport.MaxDepth = 1.f;
+
+
+
+    p_command_list->RSSetViewports(1, &shadow_mapping_viewport);
+
+    D3D12_RECT shadow_mapping_scissorRect;
+    shadow_mapping_scissorRect.left = 0;
+    shadow_mapping_scissorRect.top = 0;
+    shadow_mapping_scissorRect.right = static_cast<LONG>(m_viewPort.Width);
+    shadow_mapping_scissorRect.bottom = static_cast<LONG>(m_viewPort.Width);
+
+    p_command_list->RSSetScissorRects(1, &shadow_mapping_scissorRect);
     p_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     p_command_list->OMSetStencilRef(0);
     p_command_list->OMSetRenderTargets( // No render target needed for the shadow pass.
         0,
         nullptr,
         FALSE,
-        &m_cpuHandleToShadowMap);
+        &m_cpuHandleToShadowCubeMap);
 
-    p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowMap.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE));
-    p_command_list->ClearDepthStencilView(m_cpuHandleToShadowMap, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+    p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowCubeMap.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+    p_command_list->ClearDepthStencilView(m_cpuHandleToShadowCubeMap, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
     // TODO: m_METAX.Draw(top_matrix_on_model,ctx); //这个用不了sponza的shader :(，还得给他单独搞个pso，或者把所有index变成有符号数，根据负数判断
     // TODO: use multiple threads distribute these draw calls
@@ -161,7 +179,7 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
     p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_backBuffer[current_back_buffer_index].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
     // Transition the shadow map from writeable to readable.
-    p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowMap.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowCubeMap.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
     constexpr FLOAT clear_color[4] { 0.f, 0.f, 0.f, 1.f };
     p_command_list->ClearRenderTargetView(m_backBufferRenderTargetViews[current_back_buffer_index], clear_color, 0, nullptr);
@@ -233,158 +251,157 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
     const std::vector<ID3D12CommandList*> submitted_commands { m_commandLists[thread_index].Get() };
     direct_queue->ExecuteCommandLists(1, submitted_commands.data());
 
-  //  {
+    //  {
 
-  //      thread_index = 1;
-		//p_command_list = m_commandLists[thread_index].Get();
-  //      // command list 提交到queue以后就可以直接Reset，没有问题
-  //      ThrowIfFailed(p_command_list->Reset(m_commandListsAllocators[thread_index].Get(), nullptr));
+    //      thread_index = 1;
+    // p_command_list = m_commandLists[thread_index].Get();
+    //      // command list 提交到queue以后就可以直接Reset，没有问题
+    //      ThrowIfFailed(p_command_list->Reset(m_commandListsAllocators[thread_index].Get(), nullptr));
 
-  //      // ******************************
-  //      // Shadow pass*******************
-  //      // ******************************
-  //      // Assume all data from models doing data transfer in the copy queue have been in required resource states.
+    //      // ******************************
+    //      // Shadow pass*******************
+    //      // ******************************
+    //      // Assume all data from models doing data transfer in the copy queue have been in required resource states.
 
-  //      // Set pipeline state and root signature
-  //      p_command_list->SetPipelineState(m_shadowMapPSO.Get());
-  //      p_command_list->SetGraphicsRootSignature(m_rootSignatureShadowMap.Get());
+    //      // Set pipeline state and root signature
+    //      p_command_list->SetPipelineState(m_shadowMapPSO.Get());
+    //      p_command_list->SetGraphicsRootSignature(m_rootSignatureShadowMap.Get());
 
-  //      auto per_frame_current_cbv_srv_uav_heap_cpu_handle = m_currentCbvSrvUavHeapCpuHandle;
-  //      auto per_frame_current_sampler_cpu_handle = m_currentSamplerCpuHandle;
+    //      auto per_frame_current_cbv_srv_uav_heap_cpu_handle = m_currentCbvSrvUavHeapCpuHandle;
+    //      auto per_frame_current_sampler_cpu_handle = m_currentSamplerCpuHandle;
 
-  //      const std::array pp_heaps { m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get() };
-  //      p_command_list->SetDescriptorHeaps(pp_heaps.size(), pp_heaps.data());
+    //      const std::array pp_heaps { m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get() };
+    //      p_command_list->SetDescriptorHeaps(pp_heaps.size(), pp_heaps.data());
 
-  //      // WARNING: models must copy needed descriptors into these two shader-visiable heaps;
-  //      m_sponza.CopyAllDescriptorsTo(m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get(), &per_frame_current_cbv_srv_uav_heap_cpu_handle, &per_frame_current_sampler_cpu_handle);
-  //      // m_METAX.(m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get(), &per_frame_current_cbv_srv_uav_heap_cpu_handle, &per_frame_current_sampler_cpu_handle);
+    //      // WARNING: models must copy needed descriptors into these two shader-visiable heaps;
+    //      m_sponza.CopyAllDescriptorsTo(m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get(), &per_frame_current_cbv_srv_uav_heap_cpu_handle, &per_frame_current_sampler_cpu_handle);
+    //      // m_METAX.(m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get(), &per_frame_current_cbv_srv_uav_heap_cpu_handle, &per_frame_current_sampler_cpu_handle);
 
-  //      // Shdow map pass只需要绑定Local matrices buffer; Scene const buffer; Light const buffer;
+    //      // Shdow map pass只需要绑定Local matrices buffer; Scene const buffer; Light const buffer;
 
-  //      // std::array<CD3DX12_ROOT_PARAMETER1, 3> rootParameters;
-  //      //// LOCAL MATRICES BUFFER
-  //      // CD3DX12_DESCRIPTOR_RANGE1 range;
-  //      // range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 1);
-  //      // rootParameters[0].InitAsDescriptorTable(1, &range);
+    //      // std::array<CD3DX12_ROOT_PARAMETER1, 3> rootParameters;
+    //      //// LOCAL MATRICES BUFFER
+    //      // CD3DX12_DESCRIPTOR_RANGE1 range;
+    //      // range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1, 1);
+    //      // rootParameters[0].InitAsDescriptorTable(1, &range);
 
-  //      //// SCENE CONST BUFFER
-  //      // rootParameters[1].InitAsConstantBufferView(0, 0);
-  //      //// Light CONST BUFFER
-  //      // rootParameters[2].InitAsConstantBufferView(1, 0);
+    //      //// SCENE CONST BUFFER
+    //      // rootParameters[1].InitAsConstantBufferView(0, 0);
+    //      //// Light CONST BUFFER
+    //      // rootParameters[2].InitAsConstantBufferView(1, 0);
 
-  //      p_command_list->SetGraphicsRootConstantBufferView(1, m_sceneConstantBuffer->GetGPUVirtualAddress());
-  //      p_command_list->SetGraphicsRootConstantBufferView(2, m_lightConstantBuffer->GetGPUVirtualAddress());
+    //      p_command_list->SetGraphicsRootConstantBufferView(1, m_sceneConstantBuffer->GetGPUVirtualAddress());
+    //      p_command_list->SetGraphicsRootConstantBufferView(2, m_lightConstantBuffer->GetGPUVirtualAddress());
 
-  //      p_command_list->RSSetViewports(1, &m_viewPort);
-  //      p_command_list->RSSetScissorRects(1, &m_scissorRect);
-  //      p_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  //      p_command_list->OMSetStencilRef(0);
-  //      p_command_list->OMSetRenderTargets( // No render target needed for the shadow pass.
-  //          0,
-  //          nullptr,
-  //          FALSE,
-  //          &m_cpuHandleToShadowMap);
+    //      p_command_list->RSSetViewports(1, &m_viewPort);
+    //      p_command_list->RSSetScissorRects(1, &m_scissorRect);
+    //      p_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    //      p_command_list->OMSetStencilRef(0);
+    //      p_command_list->OMSetRenderTargets( // No render target needed for the shadow pass.
+    //          0,
+    //          nullptr,
+    //          FALSE,
+    //          &m_cpuHandleToShadowCubeMap);
 
-  //      p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowMap.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE));
-  //      p_command_list->ClearDepthStencilView(m_cpuHandleToShadowMap, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+    //      p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowCubeMap.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+    //      p_command_list->ClearDepthStencilView(m_cpuHandleToShadowCubeMap, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
 
-  //      // TODO: m_METAX.Draw(top_matrix_on_model,ctx); //这个用不了sponza的shader :(，还得给他单独搞个pso，或者把所有index变成有符号数，根据负数判断
-  //      // TODO: use multiple threads distribute these draw calls
-  //      //   Distribute objects over threads by drawing only 1/NumContexts
-  //      //   objects per worker (i.e. every object such that objectnum %
-  //      //   NumContexts == threadIndex).
+    //      // TODO: m_METAX.Draw(top_matrix_on_model,ctx); //这个用不了sponza的shader :(，还得给他单独搞个pso，或者把所有index变成有符号数，根据负数判断
+    //      // TODO: use multiple threads distribute these draw calls
+    //      //   Distribute objects over threads by drawing only 1/NumContexts
+    //      //   objects per worker (i.e. every object such that objectnum %
+    //      //   NumContexts == threadIndex).
 
-  //      for (auto&& [index, render_object] : std::ranges::views::enumerate(m_sponza.m_draw_ctx.OpaqueSurfaces)) {
-  //          // if (render_object.material_index == -1) {
-  //          //     assert(false, "这里得想办法安排一个null material，里面的index全部是invalid，然后全部用白色渲染，或者就要再搞一个PSO，专门用来把模型涂成全部白色");
-  //          // }
-  //          p_command_list->SetGraphicsRootDescriptorTable(0, m_sponza.GetGPUDescHandleToLocalMatricesBuffer().Offset(index, m_cbvSrvUavIncrementSize));
-  //          p_command_list->IASetVertexBuffers(0, 1, &render_object.vertex_buffer_view);
-  //          p_command_list->IASetIndexBuffer(&render_object.index_buffer_view);
-  //          p_command_list->DrawIndexedInstanced(render_object.index_count, 1, render_object.first_index, 0, 0);
-  //      }
+    //      for (auto&& [index, render_object] : std::ranges::views::enumerate(m_sponza.m_draw_ctx.OpaqueSurfaces)) {
+    //          // if (render_object.material_index == -1) {
+    //          //     assert(false, "这里得想办法安排一个null material，里面的index全部是invalid，然后全部用白色渲染，或者就要再搞一个PSO，专门用来把模型涂成全部白色");
+    //          // }
+    //          p_command_list->SetGraphicsRootDescriptorTable(0, m_sponza.GetGPUDescHandleToLocalMatricesBuffer().Offset(index, m_cbvSrvUavIncrementSize));
+    //          p_command_list->IASetVertexBuffers(0, 1, &render_object.vertex_buffer_view);
+    //          p_command_list->IASetIndexBuffer(&render_object.index_buffer_view);
+    //          p_command_list->DrawIndexedInstanced(render_object.index_count, 1, render_object.first_index, 0, 0);
+    //      }
 
-  //      // ************************************************************
-  //      // Scene Pass  SM6.6 [RootSignature(BindlessRootSignature)]
-  //      // ************************************************************
+    //      // ************************************************************
+    //      // Scene Pass  SM6.6 [RootSignature(BindlessRootSignature)]
+    //      // ************************************************************
 
-  //      // Indicate that the back buffer will be used as a render target.
-  //       p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_backBuffer[current_back_buffer_index].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    //      // Indicate that the back buffer will be used as a render target.
+    //       p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_backBuffer[current_back_buffer_index].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-  //      // Transition the shadow map from writeable to readable.
-  //      p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowMap.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    //      // Transition the shadow map from writeable to readable.
+    //      p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_shadowPassShadowCubeMap.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 
-  //      constexpr FLOAT clear_color[4] { 0.f, 0.f, 0.f, 1.f };
-  //      p_command_list->ClearRenderTargetView(m_backBufferRenderTargetViews[current_back_buffer_index], clear_color, 0, nullptr);
+    //      constexpr FLOAT clear_color[4] { 0.f, 0.f, 0.f, 1.f };
+    //      p_command_list->ClearRenderTargetView(m_backBufferRenderTargetViews[current_back_buffer_index], clear_color, 0, nullptr);
 
-  //      p_command_list->SetPipelineState(m_scenePSO.Get());
-  //      p_command_list->SetGraphicsRootSignature(m_rootSignatureScene.Get());
+    //      p_command_list->SetPipelineState(m_scenePSO.Get());
+    //      p_command_list->SetGraphicsRootSignature(m_rootSignatureScene.Get());
 
-  //      // WARNING: models must copy needed descriptors into these two shader-visiable heaps before call SetGraphicsRootSignature function;
-  //      // const std::array pp_heaps { m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get() };
-  //      // p_command_list->SetDescriptorHeaps(pp_heaps.size(), pp_heaps.data());
+    //      // WARNING: models must copy needed descriptors into these two shader-visiable heaps before call SetGraphicsRootSignature function;
+    //      // const std::array pp_heaps { m_cbvSrvUavHeapShaderVisible.Get(), m_samplerHeapShaderVisible.Get() };
+    //      // p_command_list->SetDescriptorHeaps(pp_heaps.size(), pp_heaps.data());
 
-  //      // scene const buffer
-  //      p_command_list->SetGraphicsRootConstantBufferView(3, m_sceneConstantBuffer->GetGPUVirtualAddress());
+    //      // scene const buffer
+    //      p_command_list->SetGraphicsRootConstantBufferView(3, m_sceneConstantBuffer->GetGPUVirtualAddress());
 
-  //      // light const buffer
-  //      p_command_list->SetGraphicsRootConstantBufferView(4, m_lightConstantBuffer->GetGPUVirtualAddress());
+    //      // light const buffer
+    //      p_command_list->SetGraphicsRootConstantBufferView(4, m_lightConstantBuffer->GetGPUVirtualAddress());
 
-  //      // SRVs for texture，shadowmap 恰好安在heap中的第一个
-  //      p_command_list->SetGraphicsRootDescriptorTable(5, CD3DX12_GPU_DESCRIPTOR_HANDLE(m_cbvSrvUavHeapShaderVisible->GetGPUDescriptorHandleForHeapStart()));
+    //      // SRVs for texture，shadowmap 恰好安在heap中的第一个
+    //      p_command_list->SetGraphicsRootDescriptorTable(5, CD3DX12_GPU_DESCRIPTOR_HANDLE(m_cbvSrvUavHeapShaderVisible->GetGPUDescriptorHandleForHeapStart()));
 
-  //      // sampler设置，第一个是采样shadow map的sampler（已安装）
-  //      p_command_list->SetGraphicsRootDescriptorTable(7, m_samplerHeapShaderVisible->GetGPUDescriptorHandleForHeapStart());
+    //      // sampler设置，第一个是采样shadow map的sampler（已安装）
+    //      p_command_list->SetGraphicsRootDescriptorTable(7, m_samplerHeapShaderVisible->GetGPUDescriptorHandleForHeapStart());
 
-  //      p_command_list->RSSetViewports(1, &m_viewPort);
-  //      p_command_list->RSSetScissorRects(1, &m_scissorRect);
-  //      p_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  //      p_command_list->OMSetStencilRef(0);
+    //      p_command_list->RSSetViewports(1, &m_viewPort);
+    //      p_command_list->RSSetScissorRects(1, &m_scissorRect);
+    //      p_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    //      p_command_list->OMSetStencilRef(0);
 
-  //      const D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = m_backBufferRenderTargetViews[current_back_buffer_index];
+    //      const D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = m_backBufferRenderTargetViews[current_back_buffer_index];
 
-  //      p_command_list->ClearDepthStencilView(m_cpuHandleToSceneDepthBuffer, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-  //      p_command_list->OMSetRenderTargets(1, &rtv_handle, FALSE, &m_cpuHandleToSceneDepthBuffer);
+    //      p_command_list->ClearDepthStencilView(m_cpuHandleToSceneDepthBuffer, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+    //      p_command_list->OMSetRenderTargets(1, &rtv_handle, FALSE, &m_cpuHandleToSceneDepthBuffer);
 
-  //      // TODO: use multiple threads distribute these draw calls
-  //      //   Distribute objects over threads by drawing only 1/NumContexts
-  //      //   objects per worker (i.e. every object such that objectnum %
-  //      //   NumContexts == threadIndex).
+    //      // TODO: use multiple threads distribute these draw calls
+    //      //   Distribute objects over threads by drawing only 1/NumContexts
+    //      //   objects per worker (i.e. every object such that objectnum %
+    //      //   NumContexts == threadIndex).
 
-  //      // sponza drawing
-  //      {
-  //          p_command_list->SetGraphicsRootDescriptorTable(2, m_sponza.GetGPUDescHandleToMaterialConstantsBuffer());
-  //          // SRVs for bindless textures
-  //          p_command_list->SetGraphicsRootDescriptorTable(6, m_sponza.GetGPUDescHandleToTexturesTable());
-  //          // bindless sampelrs for model
-  //          p_command_list->SetGraphicsRootDescriptorTable(8, m_sponza.GetGPUDescHandleToSamplers());
+    //      // sponza drawing
+    //      {
+    //          p_command_list->SetGraphicsRootDescriptorTable(2, m_sponza.GetGPUDescHandleToMaterialConstantsBuffer());
+    //          // SRVs for bindless textures
+    //          p_command_list->SetGraphicsRootDescriptorTable(6, m_sponza.GetGPUDescHandleToTexturesTable());
+    //          // bindless sampelrs for model
+    //          p_command_list->SetGraphicsRootDescriptorTable(8, m_sponza.GetGPUDescHandleToSamplers());
 
-  //          for (auto&& [index, render_object] : std::ranges::views::enumerate(m_sponza.m_draw_ctx.OpaqueSurfaces)) {
-  //              // if (render_object.material_index == -1) {
-  //              //     assert(false, "这里得想办法安排一个null material，里面的index全部是invalid，然后全部用白色渲染，或者就要再搞一个PSO，专门用来把模型涂成全部白色");
-  //              // }
-  //              p_command_list->IASetVertexBuffers(0, 1, &render_object.vertex_buffer_view);
-  //              p_command_list->IASetIndexBuffer(&render_object.index_buffer_view);
+    //          for (auto&& [index, render_object] : std::ranges::views::enumerate(m_sponza.m_draw_ctx.OpaqueSurfaces)) {
+    //              // if (render_object.material_index == -1) {
+    //              //     assert(false, "这里得想办法安排一个null material，里面的index全部是invalid，然后全部用白色渲染，或者就要再搞一个PSO，专门用来把模型涂成全部白色");
+    //              // }
+    //              p_command_list->IASetVertexBuffers(0, 1, &render_object.vertex_buffer_view);
+    //              p_command_list->IASetIndexBuffer(&render_object.index_buffer_view);
 
-  //              // The change made to a root constant will **BE RECORDED INTO THE COMMAND LIST**, makes a root constant very suitable for samll, very dynamic data(changing very draw call)
-  //              p_command_list->SetGraphicsRoot32BitConstant(0, render_object.material_index, 0);
-  //              // material constant structured bindlss buffer
+    //              // The change made to a root constant will **BE RECORDED INTO THE COMMAND LIST**, makes a root constant very suitable for samll, very dynamic data(changing very draw call)
+    //              p_command_list->SetGraphicsRoot32BitConstant(0, render_object.material_index, 0);
+    //              // material constant structured bindlss buffer
 
-  //              // Local matrices buffer, change every draw call by creating as many views as number of the matrices. But we still only got on big buffer for all matrices
-  //              p_command_list->SetGraphicsRootDescriptorTable(1, m_sponza.GetGPUDescHandleToLocalMatricesBuffer().Offset(index, m_cbvSrvUavIncrementSize));
+    //              // Local matrices buffer, change every draw call by creating as many views as number of the matrices. But we still only got on big buffer for all matrices
+    //              p_command_list->SetGraphicsRootDescriptorTable(1, m_sponza.GetGPUDescHandleToLocalMatricesBuffer().Offset(index, m_cbvSrvUavIncrementSize));
 
-  //              p_command_list->DrawIndexedInstanced(render_object.index_count, 1, render_object.first_index, 0, 0);
-  //          }
-  //      }
+    //              p_command_list->DrawIndexedInstanced(render_object.index_count, 1, render_object.first_index, 0, 0);
+    //          }
+    //      }
 
-  //      p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_backBuffer[current_back_buffer_index].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+    //      p_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_backBuffer[current_back_buffer_index].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
-  //      ThrowIfFailed(p_command_list->Close());
+    //      ThrowIfFailed(p_command_list->Close());
 
-  //      const std::vector<ID3D12CommandList*> submitted_commands { m_commandLists[thread_index].Get() };
-  //      direct_queue->ExecuteCommandLists(1, submitted_commands.data());
-  //  }
-
+    //      const std::vector<ID3D12CommandList*> submitted_commands { m_commandLists[thread_index].Get() };
+    //      direct_queue->ExecuteCommandLists(1, submitted_commands.data());
+    //  }
 
     // DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING must be specified when creating the swap chain. Additionally, the DXGI_PRESENT_ALLOW_TEARING flag must be used when presenting the swap chain with a sync-interval of 0.
     m_pp_swapChain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
@@ -396,11 +413,12 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
 
 void FrameResource::OnUpdateGlobalState(const std::vector<xwin::KeyboardData>& keyboard_data)
 {
+    m_sceneConstBufferCpuSide.ambient_color = { 0.2f, 0.2f, 0.2f, 1.0f };
+    //m_sceneConstBufferCpuSide.model = glm::rotate(glm::mat4(1.f), glm::radians(30.f),glm::vec3(0.f,1.f,0.f));
+    m_sceneConstBufferCpuSide.model = glm::mat4(1.f);
 
-    m_sceneConstBufferCpuSide.ambientColor = { 0.2f, 0.2f, 0.2f, 1.0f };
-    m_sceneConstBufferCpuSide.model = glm::mat4(1.0f);
-
-    for (const auto& key_datum : keyboard_data) {
+    for (const auto& key_datum : keyboard_data) 
+    {
         if (key_datum.key == xwin::Key::W) {
             m_camera.eye.z += 0.05f;
         }
@@ -430,13 +448,29 @@ void FrameResource::OnUpdateGlobalState(const std::vector<xwin::KeyboardData>& k
 void FrameResource::OnUpdatePerFrame()
 {
 
+
     // The scene pass is drawn from the camera.
     // 目前shadow pass只用第一盏灯生成深度图。
-    m_lightCameras[0].Get3DViewProjMatrices(&m_lightConstBufferCpuSide.lights[0].view, &m_lightConstBufferCpuSide.lights[0].projection, 60.0f, m_viewPort.Width, m_viewPort.Height, 0.1f, 800.f);
-    m_lightCameras[1].Get3DViewProjMatrices(&m_lightConstBufferCpuSide.lights[1].view, &m_lightConstBufferCpuSide.lights[1].projection, 60.0f, m_viewPort.Width, m_viewPort.Height, 0.1f, 800.f);
-    m_lightCameras[2].Get3DViewProjMatrices(&m_lightConstBufferCpuSide.lights[2].view, &m_lightConstBufferCpuSide.lights[2].projection, 60.0f, m_viewPort.Width, m_viewPort.Height, 0.1f, 800.f);
+    constexpr float near_plane = 1.f;
+    constexpr float far_plane = 25.f;
+    m_lightCameras[0].Get3DViewProjMatricesForPointLight(&m_lightConstBufferCpuSide.lights[0].projection, &m_lightConstBufferCpuSide.lights[0].view, m_viewPort.Width, m_viewPort.Width, near_plane, far_plane);
+    m_lightCameras[1].Get3DViewProjMatricesForPointLight(&m_lightConstBufferCpuSide.lights[1].projection, &m_lightConstBufferCpuSide.lights[1].view, m_viewPort.Width, m_viewPort.Width, near_plane, far_plane);
+    m_lightCameras[2].Get3DViewProjMatricesForPointLight(&m_lightConstBufferCpuSide.lights[2].projection, &m_lightConstBufferCpuSide.lights[2].view, m_viewPort.Width, m_viewPort.Width, near_plane, far_plane);
 
-    m_camera.Get3DViewProjMatrices(&m_sceneConstBufferCpuSide.view, &m_sceneConstBufferCpuSide.projection, 60.0f, m_viewPort.Width, m_viewPort.Height);
+
+    m_lightConstBufferCpuSide.lights[0].far_plane = far_plane;
+    m_lightConstBufferCpuSide.lights[0].position = m_lightCameras->eye;
+
+
+    m_lightConstBufferCpuSide.lights[1].far_plane = far_plane;
+    m_lightConstBufferCpuSide.lights[1].position = m_lightCameras->eye;
+
+    m_lightConstBufferCpuSide.lights[2].far_plane = far_plane;
+    m_lightConstBufferCpuSide.lights[2].position = m_lightCameras->eye;
+
+
+    m_camera.Get3DViewProjMatrices(&m_sceneConstBufferCpuSide.view, &m_sceneConstBufferCpuSide.projection, 90.0f, m_viewPort.Width, m_viewPort.Height, 1.f, 25.f);
+    m_sceneConstBufferCpuSide.camera_pos = m_camera.eye;
 
     memcpy(m_mappedLightConstantBuffer, &m_lightConstBufferCpuSide, sizeof(m_lightConstBufferCpuSide));
     memcpy(m_mappedSceneConstantBuffer, &m_sceneConstBufferCpuSide, sizeof(m_sceneConstBufferCpuSide));
@@ -569,13 +603,12 @@ void FrameResource::SetupLights()
         // Set up each of the light positions and directions (they all start
         // in the same place).
         m_lightConstBufferCpuSide.lights[i].position = { 0.0f, 6.0f, 0.0f, 1.0f };
-        m_lightConstBufferCpuSide.lights[i].direction = { -1., 0.f, 0.0f, 0.0f };
-        m_lightConstBufferCpuSide.lights[i].falloff = { 800.0f, 1.0f, 0.0f, 1.0f };
         m_lightConstBufferCpuSide.lights[i].color = { 0.7f, 0.7f, 0.7f, 1.0f };
+        m_lightConstBufferCpuSide.lights[i].falloff = { 800.0f, 1.0f, 0.0f, 1.0f };
 
         const glm::vec4 eye = m_lightConstBufferCpuSide.lights[i].position;
-        const glm::vec4 at = eye + m_lightConstBufferCpuSide.lights[i].direction;
-        constexpr glm::vec4 up = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+        constexpr glm::vec4 at {};
+        constexpr glm::vec4 up {};
 
         m_lightCameras[i].Set(eye, at, up);
     }
@@ -804,7 +837,7 @@ void FrameResource::InitScenePassShaders()
     //     m_shadowPixelShader->GetBufferSize());
 }
 
-void FrameResource::InitDepthBuffer()
+void FrameResource::InitSceneDepthBuffer()
 {
     // CREATE THE DEPTH STENCIL.
     const CD3DX12_RESOURCE_DESC shadow_texture_desc(
@@ -870,13 +903,30 @@ void FrameResource::InitShadowPassShaders()
     //-----默认会编译.hlsl文件到.dxbc----->
     // wchar的hlsl文件路径
     const std::wstring vert_path = w_working_path + L"assets\\shaders\\shadowPass.vert.hlsl";
-    // const std::wstring frag_path = w_working_path + L"assets\\shaders\\shadowPass.frag.hlsl";
+    const std::wstring frag_path = w_working_path + L"assets\\shaders\\shadowPass.frag.hlsl";
+    const std::wstring geo_path = w_working_path + L"assets\\shaders\\shadowPass.geo.hlsl";
 
     // Compile shaders
     m_shadowVertexShader = DXC::CompileShader(
         vert_path, // Path to your shader file
         L"main", // Entry point function name
         L"vs_6_6", // Shader profile
+        m_dxcUtils,
+        m_dxcCompiler,
+        m_includeHandler);
+
+    m_shadowGeometryShader = DXC::CompileShader(
+        geo_path, // Path to your shader file
+        L"main", // Entry point function name
+        L"gs_6_6", // Shader profile
+        m_dxcUtils,
+        m_dxcCompiler,
+        m_includeHandler);
+
+    m_shadowPixelShader = DXC::CompileShader(
+        frag_path, // Path to your shader file
+        L"main", // Entry point function name
+        L"ps_6_6", // Shader profile
         m_dxcUtils,
         m_dxcCompiler,
         m_includeHandler);
@@ -945,10 +995,9 @@ void FrameResource::InitShadowPassPSO()
     depth_stencil_desc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     depth_stencil_desc.StencilEnable = FALSE;
 
-    pso_desc.VS.BytecodeLength = m_shadowVertexShader->GetBufferSize();
-    pso_desc.VS.pShaderBytecode = m_shadowVertexShader->GetBufferPointer();
-
-    pso_desc.PS = CD3DX12_SHADER_BYTECODE(nullptr, 0);
+    pso_desc.VS = CD3DX12_SHADER_BYTECODE(m_shadowVertexShader->GetBufferPointer(), m_shadowVertexShader->GetBufferSize());
+    pso_desc.GS = CD3DX12_SHADER_BYTECODE(m_shadowGeometryShader->GetBufferPointer(), m_shadowGeometryShader->GetBufferSize());
+    pso_desc.PS = CD3DX12_SHADER_BYTECODE(m_shadowPixelShader->GetBufferPointer(), m_shadowPixelShader->GetBufferSize());
 
     auto shadow_pass_rs = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 
@@ -956,10 +1005,11 @@ void FrameResource::InitShadowPassPSO()
     shadow_pass_rs.DepthBiasClamp = 0.0f;
     shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
 
-    // shadow_pass_rs.DepthClipEnable = true;
-    // shadow_pass_rs.DepthBias = 100000;
-    // shadow_pass_rs.DepthBiasClamp = 0.0f;
-    // shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
+    // TODO:
+    //  shadow_pass_rs.DepthClipEnable = true;
+    //  shadow_pass_rs.DepthBias = 100000;
+    //  shadow_pass_rs.DepthBiasClamp = 0.0f;
+    //  shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
 
     pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     pso_desc.RasterizerState = shadow_pass_rs;
@@ -974,22 +1024,21 @@ void FrameResource::InitShadowPassPSO()
 
     ThrowIfFailed(m_pp_device->CreateGraphicsPipelineState(
         &pso_desc, IID_PPV_ARGS(m_shadowMapPSO.ReleaseAndGetAddressOf())));
-
-    // NAME_D3D12_OBJECT(m_pipelineState);
 }
 
 void FrameResource::InitShadowMap()
 {
-    // DESCRIBE AND CREATE THE SHADOW MAP TEXTURE.
+    // DESCRIBE AND CREATE THE CUBEMAP SHADOW MAP TEXTURE.
     const CD3DX12_RESOURCE_DESC shadow_tex_desc(
         D3D12_RESOURCE_DIMENSION_TEXTURE2D,
         0,
         static_cast<UINT>(m_viewPort.Width),
-        static_cast<UINT>(m_viewPort.Height),
-        1,
+        static_cast<UINT>(m_viewPort.Width),
+
+
+        6,
         1,
         DXGI_FORMAT_R32_TYPELESS,
-
         1,
         0,
         D3D12_TEXTURE_LAYOUT_UNKNOWN,
@@ -1007,33 +1056,33 @@ void FrameResource::InitShadowMap()
         &shadow_tex_desc,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         &clear_value,
-        IID_PPV_ARGS(m_shadowPassShadowMap.ReleaseAndGetAddressOf())));
-
-    // NAME_D3D12_OBJECT(m_shadowTexture);
-
-    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_view_desc = {};
-    depth_stencil_view_desc.Format = DXGI_FORMAT_D32_FLOAT;
-    depth_stencil_view_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    depth_stencil_view_desc.Texture2D.MipSlice = 0;
+        IID_PPV_ARGS(m_shadowPassShadowCubeMap.ReleaseAndGetAddressOf())));
+    m_shadowPassShadowCubeMap->SetName(L"ShadowPassShadowCubeMap");
 
     // CREATE THE SHADOW MAP DEPTH STENCIL VIEW.
-    m_pp_device->CreateDepthStencilView(
-        m_shadowPassShadowMap.Get(),
-        &depth_stencil_view_desc,
-        m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-    m_cpuHandleToShadowMap = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
+    m_cpuHandleToShadowCubeMap = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_DEPTH_STENCIL_VIEW_DESC depth_stencil_view_desc = {};
+    depth_stencil_view_desc.Format = DXGI_FORMAT_D32_FLOAT;
+    depth_stencil_view_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+    depth_stencil_view_desc.Texture2DArray.ArraySize = 6;
+    depth_stencil_view_desc.Texture2DArray.FirstArraySlice = 0;
+    depth_stencil_view_desc.Texture2DArray.MipSlice = 0;
 
-    // CREATE THE SHADOW MAP SHADER RESOURCE VIEW.安装到heap最开始
+    m_pp_device->CreateDepthStencilView(m_shadowPassShadowCubeMap.Get(), &depth_stencil_view_desc, m_cpuHandleToShadowCubeMap);
+
+    // CREATE THE SHADOW MAP SHADER RESOURCE VIEW.安装到shader visible heap最开始
     D3D12_SHADER_RESOURCE_VIEW_DESC shadow_srv_desc = {};
     shadow_srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
-    shadow_srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    shadow_srv_desc.Texture2D.MipLevels = 1;
+    shadow_srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
     shadow_srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    shadow_srv_desc.TextureCube.MipLevels = 1;
+    shadow_srv_desc.TextureCube.MostDetailedMip = 0;
+    shadow_srv_desc.TextureCube.ResourceMinLODClamp = 0.0f;
 
     m_currentCbvSrvUavHeapCpuHandle = m_cbvSrvUavHeapShaderVisible->GetCPUDescriptorHandleForHeapStart();
     CD3DX12_CPU_DESCRIPTOR_HANDLE shadow_map_srv_heap_handle(m_currentCbvSrvUavHeapCpuHandle);
 
-    m_pp_device->CreateShaderResourceView(m_shadowPassShadowMap.Get(), &shadow_srv_desc, shadow_map_srv_heap_handle);
+    m_pp_device->CreateShaderResourceView(m_shadowPassShadowCubeMap.Get(), &shadow_srv_desc, shadow_map_srv_heap_handle);
     m_currentCbvSrvUavHeapCpuHandle.Offset(1, m_rtvIncrementSize);
 }
 
@@ -1043,18 +1092,32 @@ void FrameResource::InitShadowMapSampler()
     // used for the shadow map.
     m_currentSamplerCpuHandle = m_samplerHeapShaderVisible->GetCPUDescriptorHandleForHeapStart();
 
-    D3D12_SAMPLER_DESC clamp_sampler_desc = {};
-    clamp_sampler_desc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-    clamp_sampler_desc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    clamp_sampler_desc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    clamp_sampler_desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    clamp_sampler_desc.MipLODBias = 0.0f;
-    clamp_sampler_desc.MaxAnisotropy = 1;
-    clamp_sampler_desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-    clamp_sampler_desc.BorderColor[0] = clamp_sampler_desc.BorderColor[1] = clamp_sampler_desc.BorderColor[2] = clamp_sampler_desc.BorderColor[3] = 0.f;
-    clamp_sampler_desc.MinLOD = 0;
-    clamp_sampler_desc.MaxLOD = D3D12_FLOAT32_MAX;
-    m_pp_device->CreateSampler(&clamp_sampler_desc, m_currentSamplerCpuHandle);
+    // D3D12_SAMPLER_DESC samplerDesc = {};
+    // samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR; // Linear filtering
+    // samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    // samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    // samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // Cubemaps wrap in all dimensions
+    // samplerDesc.MinLOD = 0; // Minimum mip level
+    // samplerDesc.MaxLOD = D3D12_FLOAT32_MAX; // Maximum mip level
+    // samplerDesc.MipLODBias = 0.0f;
+    // samplerDesc.MaxAnisotropy = 1; // No anisotropic filtering
+    // samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS; // Comparison function for shadows (not used here)
+
+    D3D12_SAMPLER_DESC shadow_map_sampler = {};
+    shadow_map_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT; // 对depth value不要用线性采样
+    shadow_map_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    shadow_map_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    shadow_map_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    shadow_map_sampler.MipLODBias = 0.0f;
+    shadow_map_sampler.MaxAnisotropy = 1;
+    shadow_map_sampler.BorderColor[0] = shadow_map_sampler.BorderColor[1] = shadow_map_sampler.BorderColor[2] = shadow_map_sampler.BorderColor[3] = 1.f;
+
+
+    shadow_map_sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+
+    shadow_map_sampler.MinLOD = 0;
+    shadow_map_sampler.MaxLOD = D3D12_FLOAT32_MAX;
+    m_pp_device->CreateSampler(&shadow_map_sampler, m_currentSamplerCpuHandle);
     m_currentSamplerCpuHandle.Offset(1, m_samplerIncrementSize);
 }
 
@@ -1105,7 +1168,7 @@ void FrameResource::InitScenePass()
     // Texture descriptors copy offset by 4,  前4个分别是给scene const buffer; Light const buffer; Material const; Shadow map
     InitScenePassRootSignature();
     InitScenePassShaders();
-    InitDepthBuffer();
+    InitSceneDepthBuffer();
     InitRenderTargetsAndRenderTargetViews();
     InitShadowMapSampler();
     InitScenePassPSO();

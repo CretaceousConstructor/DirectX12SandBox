@@ -59,7 +59,7 @@ private:
     void InitScenePass();
     void InitScenePassRootSignature();
     void InitScenePassShaders();
-    void InitDepthBuffer();
+    void InitSceneDepthBuffer();
     void InitRenderTargetsAndRenderTargetViews() const;
     void InitShadowMapSampler();
     void InitScenePassPSO();
@@ -70,12 +70,13 @@ private:
 
     struct LightState {
         glm::float4 position;
-        glm::float4 direction;
         glm::float4 color;
         glm::float4 falloff;
+        float far_plane;
+        glm::float3 padding;
 
-        glm::mat4 view;
-        glm::mat4 projection;
+        std::array<glm::mat4, 6> view;
+        std::array<glm::mat4, 6> projection;
     };
 
     struct LightConstBuffer {
@@ -86,7 +87,8 @@ private:
         glm::mat4 model;
         glm::mat4 view;
         glm::mat4 projection;
-        glm::float4 ambientColor;
+        glm::float4 camera_pos;
+        glm::float4 ambient_color;
     };
 
 private:
@@ -124,7 +126,9 @@ private:
 
     // PSO
     WRL::ComPtr<IDxcBlob> m_shadowVertexShader;
-    // WRL::ComPtr<IDxcBlob> m_shadowPixelShader;
+    WRL::ComPtr<IDxcBlob> m_shadowGeometryShader;
+    WRL::ComPtr<IDxcBlob> m_shadowPixelShader;
+
     WRL::ComPtr<ID3D12RootSignature> m_rootSignatureShadowMap;
     WRL::ComPtr<ID3D12PipelineState> m_shadowMapPSO;
 
@@ -148,9 +152,9 @@ private:
     WRL::ComPtr<ID3D12CommandAllocator> m_commandListsAllocators[NumContexts];
     WRL::ComPtr<ID3D12GraphicsCommandList> m_commandLists[NumContexts];
 
-    // SHADOW MAP FOR SHADOW PASS AND DEPTH BUFFER FOR SCENE PASS
-    WRL::ComPtr<ID3D12Resource> m_shadowPassShadowMap;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_cpuHandleToShadowMap;
+    // CUBEMAP SHADOW MAP FOR SHADOW PASS AND DEPTH BUFFER FOR SCENE PASS
+    WRL::ComPtr<ID3D12Resource> m_shadowPassShadowCubeMap;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_cpuHandleToShadowCubeMap;
 
     WRL::ComPtr<ID3D12Resource> m_scenePassDepthBuffer;
     D3D12_CPU_DESCRIPTOR_HANDLE m_cpuHandleToSceneDepthBuffer;

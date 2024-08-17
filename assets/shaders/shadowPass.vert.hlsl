@@ -24,23 +24,21 @@ struct VSInput
     //float padding4;
 };
 
-struct PSInput
+struct VSOutput
 {
-    float4 position : SV_POSITION;
-    float4 worldpos : POSITION;
-    float2 uv : TEXCOORD0;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
+    float3 world_pos: POSITION;
 };
 
 struct LightState
 {
     float4 position;
-    float4 direction;
     float4 color;
     float4 falloff;
-    float4x4 view;
-    float4x4 projection;
+    float  far_plane;
+    float3 padding;
+
+    float4x4 views[6];
+    float4x4 projections[6];
 };
 
 cbuffer SceneConstantBuffer : register(b0, space0)
@@ -48,6 +46,7 @@ cbuffer SceneConstantBuffer : register(b0, space0)
     float4x4 model;
     float4x4 view;
     float4x4 projection;
+    float4   camera_pos;
     float4   ambientColor;
 };
 
@@ -61,23 +60,24 @@ cbuffer LocalMatrix : register(b1, space1)
     float4x4 localMatrix;
 }
 
-PSInput main(VSInput vs_in)
+
+VSOutput main(VSInput vs_in)
 {
-    PSInput result;
+    VSOutput result;
     float4 new_position = float4(vs_in.position.xyz, 1.0f);
     
     new_position = mul(new_position, localMatrix);
     new_position = mul(new_position, model);
 
-    result.worldpos = new_position;
+    //result.worldpos = new_position;
 
-    new_position = mul(new_position, lights[0].view);
-    new_position = mul(new_position, lights[0].projection);
+    //new_position = mul(new_position, lights[0].view);
+    //new_position = mul(new_position, lights[0].projection);
 
-    result.position = new_position;
-    result.uv = vs_in.uv.xy;
-    result.normal = vs_in.normal.xyz;
-    result.tangent = vs_in.tangent.xyz;
+    result.world_pos = new_position.xyz;
+    //result.uv = vs_in.uv.xy;
+    //result.normal = vs_in.normal.xyz;
+    //result.tangent = vs_in.tangent.xyz;
 
     return result;
 }
