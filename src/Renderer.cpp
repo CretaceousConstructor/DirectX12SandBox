@@ -799,6 +799,8 @@ void Renderer::destroyResources()
 
 void Renderer::destroyCommands()
 {
+
+
     // if (m_MainDirectCommandList) {
     //     m_MainDirectCommandList->Reset(m_MainDirectCommandAllocator.Get(),
     //         m_PipelineState.Get());

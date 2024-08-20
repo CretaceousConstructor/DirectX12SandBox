@@ -123,35 +123,6 @@ float3 CalcPerPixelNormal(float2 vTexcoord, float3 vVertNormal, float3 vVertTang
     return mul(vBumpNormal, mTangentSpaceToWorldSpace);
 }
 
-
-
-////--------------------------------------------------------------------------------------
-//// Diffuse lighting calculation, with angle and distance falloff.
-////--------------------------------------------------------------------------------------
-//float4 CalcLightingColor(float3 vLightPos, float3 vLightDir, float4 vLightColor, float4 vFalloffs, float3 vPosWorld, float3 vPerPixelNormal)
-//{
-//    float3 vLightToPixelUnNormalized = vPosWorld - vLightPos;
-//
-//    // Dist falloff = 0 at vFalloffs.x, 1 at vFalloffs.x - vFalloffs.y
-//    float fDist = length(vLightToPixelUnNormalized);
-//
-//    float fDistFalloff = saturate((vFalloffs.x - fDist) / vFalloffs.y);
-//
-//    // Normalize from here on.
-//    float3 vLightToPixelNormalized = vLightToPixelUnNormalized / fDist;
-//
-//    // Angle falloff = 0 at vFalloffs.z, 1 at vFalloffs.z - vFalloffs.w
-//    float fCosAngle = dot(vLightToPixelNormalized, vLightDir / length(vLightDir));
-//    float fAngleFalloff = saturate((fCosAngle - vFalloffs.z) / vFalloffs.w);
-//
-//    // Diffuse contribution.
-//    float fNDotL = saturate(-dot(vLightToPixelNormalized, vPerPixelNormal));
-//
-//    return vLightColor * fNDotL * fDistFalloff * fAngleFalloff;
-//}
-
-
-
 //--------------------------------------------------------------------------------------
 // Test how much pixel is in shadow, using 2x2 percentage-closer filtering.
 //--------------------------------------------------------------------------------------
@@ -212,17 +183,17 @@ float3 CalcPerPixelNormal(float2 vTexcoord, float3 vVertNormal, float3 vVertTang
 float ShadowCalculation(float3 world_pos)
 {
     // get vector between fragment position and light position
-    float3 frag_to_light =world_pos - lights[0].position.xyz;  
+    float3 light_to_frag= world_pos - lights[0].position.xyz;  
 
     // now get current linear depth as the length between the fragment and light position
-    const float current_depth  = length(frag_to_light);
+    const float current_depth  = length(light_to_frag);
 
-    frag_to_light =normalize(world_pos - lights[0].position.xyz);  
+    light_to_frag =normalize(world_pos - lights[0].position.xyz);  
 
     float shadow  = 0.0;
 
     const float samples = 4.0;
-    const float offset  = 0.1;
+    const float offset  = 0.01;
     
     for(float x = -offset; x < offset; x += offset / (samples * 0.5))
     {
@@ -230,10 +201,9 @@ float ShadowCalculation(float3 world_pos)
         {
             for(float z = -offset; z < offset; z += offset / (samples * 0.5))
             {
-
                 // use the light to fragment vector to sample from the depth map    
-                //float closest_depth = ShadowMap.Sample(ShadowMapSampler, frag_to_light + float3(x, y, z)); 
-                float closest_depth = ShadowMap.Sample(ShadowMapSampler, frag_to_light); 
+                //float closest_depth = ShadowMap.Sample(ShadowMapSampler, frag_to_light); 
+                float closest_depth = ShadowMap.Sample(ShadowMapSampler, light_to_frag + float3(x, y, z)); 
                 closest_depth *= (lights[0].far_plane * 2.f);   // undo mapping [0;1]
                 if((current_depth - SHADOW_DEPTH_BIAS) > closest_depth){
                     shadow += 1.0;
@@ -241,6 +211,7 @@ float ShadowCalculation(float3 world_pos)
             }
         }
     }
+
     shadow /= (samples * samples * samples);
 
     return shadow;
@@ -259,23 +230,7 @@ float4 main(PSInput input) : SV_TARGET
     const int sampler_albedo_index = material_structured_buffer[0].albedoSamplerIndex;
 
     const float4 albedo = TextureTable[albedo_index].Sample(TextureSampler[sampler_albedo_index], input.uv);
-    const float3 pixel_normal = CalcPerPixelNormal(input.uv, input.normal, input.tangent);
-
-
-    //float4 total_light = ambient_color;
-
-    //for (int i = 0; i < NUM_LIGHTS; i++)
-    //for (int i = 0; i < 1; i++)
-    //{
-    //    float4 light_pass = CalcLightingColor(lights[i].position.xyz, lights[i].position.xyz, lights[i].color, lights[i].falloff, input.worldpos.xyz, pixel_normal);
-    //    light_pass *= CalcUnshadowedAmountPCF2x2(i, input.worldpos);
-    //    total_light += light_pass;
-    //}
-
-    //float3 color = texture(diffuseTexture, fs_in.TexCoords).rgb;
-    //vec3 normal = normalize(fs_in.Normal);
-    //vec3 lightColor = vec3(0.3);
-
+    const float3 pixel_normal = normalize(CalcPerPixelNormal(input.uv, input.normal, input.tangent));
 
     // ambient
     const float3 ambient = ambient_color.xyz;
@@ -291,10 +246,20 @@ float4 main(PSInput input) : SV_TARGET
     float3 halfwayDir = normalize(light_dir + view_dir);  
     spec = pow(max(dot(pixel_normal, halfwayDir), 0.0), 64.0);
     float3 specular = spec * lights[0].color;    
+    //falloff
+
+    float3 vLightToPixelUnNormalized = input.world_pos.xyz - lights[0].position.xyz;
+
+    // Dist falloff = 0 at vFalloffs.x, 1 at vFalloffs.x - vFalloffs.y
+    float fDist = length(vLightToPixelUnNormalized);
+    float fDistFalloff = saturate((lights[0].falloff.x - fDist) / lights[0].falloff.y);
+
     // calculate shadow
     float shadow = ShadowCalculation(input.world_pos.xyz);                      
 
-    float3 lighting = (ambient + (1.0 - shadow) * (diffuse + specular)) * albedo.xyz;    
+    float3 lighting = (ambient + fDistFalloff * (1.0 - shadow) * (diffuse + specular)) * albedo.xyz;    
+    lighting = saturate(lighting);
+
     return float4(lighting, 1.0);
 
 }

@@ -47,7 +47,6 @@ PSOutput main(PSInput input)
     
     // map to [0;1] range by dividing by far_plane
     lightDistance = lightDistance / (lights[0].far_plane * 2.f );
-
     
     // write this as modified depth
     result.depth = lightDistance;

@@ -29,7 +29,6 @@ FrameResource::FrameResource(
     GltfModel& METAX,
     const D3D12_VIEWPORT& viewport,
     const D3D12_RECT& scissor_rect)
-
     : m_pp_device(pp_device)
     , m_pp_swapChain(pp_swapChain)
     , m_dxcUtils(dxc_utils)
@@ -70,7 +69,7 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
     if (m_frame_fence->GetCompletedValue() < currentCPUSideFrameResourceFenceValue) {
         m_frame_fence->SetEventOnCompletion(currentCPUSideFrameResourceFenceValue,
             m_fenceEventFrame);
-        WaitForSingleObjectEx(m_fenceEventFrame, INFINITE, FALSE);
+        WaitForSingleObjectEx(m_fenceEventFrame, INFINITE, FALSE);  // CPU端无限等待
     }
 
     OnUpdatePerFrame();
@@ -127,21 +126,19 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
 
     shadow_mapping_viewport.TopLeftX = 0.0f;
     shadow_mapping_viewport.TopLeftY = 0.0f;
-    shadow_mapping_viewport.Width = static_cast<float>(m_viewPort.Width);
-    shadow_mapping_viewport.Height = static_cast<float>(m_viewPort.Width);
+    shadow_mapping_viewport.Width = static_cast<float>(ShadowMapDimension);
+    shadow_mapping_viewport.Height = static_cast<float>(ShadowMapDimension);
 
     shadow_mapping_viewport.MinDepth = 0.f;
     shadow_mapping_viewport.MaxDepth = 1.f;
-
-
 
     p_command_list->RSSetViewports(1, &shadow_mapping_viewport);
 
     D3D12_RECT shadow_mapping_scissorRect;
     shadow_mapping_scissorRect.left = 0;
     shadow_mapping_scissorRect.top = 0;
-    shadow_mapping_scissorRect.right = static_cast<LONG>(m_viewPort.Width);
-    shadow_mapping_scissorRect.bottom = static_cast<LONG>(m_viewPort.Width);
+    shadow_mapping_scissorRect.right = static_cast<LONG>(ShadowMapDimension);
+    shadow_mapping_scissorRect.bottom = static_cast<LONG>(ShadowMapDimension);
 
     p_command_list->RSSetScissorRects(1, &shadow_mapping_scissorRect);
     p_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -414,33 +411,33 @@ void FrameResource::RecordCommandsAndExecute(ID3D12CommandQueue* direct_queue)
 void FrameResource::OnUpdateGlobalState(const std::vector<xwin::KeyboardData>& keyboard_data)
 {
     m_sceneConstBufferCpuSide.ambient_color = { 0.2f, 0.2f, 0.2f, 1.0f };
-    //m_sceneConstBufferCpuSide.model = glm::rotate(glm::mat4(1.f), glm::radians(30.f),glm::vec3(0.f,1.f,0.f));
+    // m_sceneConstBufferCpuSide.model = glm::rotate(glm::mat4(1.f), glm::radians(30.f),glm::vec3(0.f,1.f,0.f));
     m_sceneConstBufferCpuSide.model = glm::mat4(1.f);
 
-    for (const auto& key_datum : keyboard_data) 
-    {
+    for (const auto& key_datum : keyboard_data) {
+
         if (key_datum.key == xwin::Key::W) {
-            m_camera.eye.z += 0.05f;
+            m_camera.eye.z += 0.03f;
         }
         if (key_datum.key == xwin::Key::S) {
 
-            m_camera.eye.z -= 0.05f;
+            m_camera.eye.z -= 0.03f;
         }
 
         if (key_datum.key == xwin::Key::A) {
-            m_camera.eye.x -= 0.05f;
+            m_camera.eye.x -= 0.03f;
         }
 
         if (key_datum.key == xwin::Key::D) {
-            m_camera.eye.x += 0.05f;
+            m_camera.eye.x += 0.03f;
         }
 
         if (key_datum.key == xwin::Key::J) {
-            m_camera.eye.y -= 0.05f;
+            m_camera.eye.y -= 0.03f;
         }
 
         if (key_datum.key == xwin::Key::K) {
-            m_camera.eye.y += 0.05f;
+            m_camera.eye.y += 0.03f;
         }
     }
 }
@@ -448,19 +445,17 @@ void FrameResource::OnUpdateGlobalState(const std::vector<xwin::KeyboardData>& k
 void FrameResource::OnUpdatePerFrame()
 {
 
-
     // The scene pass is drawn from the camera.
     // 目前shadow pass只用第一盏灯生成深度图。
-    constexpr float near_plane = 1.f;
-    constexpr float far_plane = 25.f;
+    constexpr float near_plane = 0.1f;
+    constexpr float far_plane = 800.f;
+
     m_lightCameras[0].Get3DViewProjMatricesForPointLight(&m_lightConstBufferCpuSide.lights[0].projection, &m_lightConstBufferCpuSide.lights[0].view, m_viewPort.Width, m_viewPort.Width, near_plane, far_plane);
     m_lightCameras[1].Get3DViewProjMatricesForPointLight(&m_lightConstBufferCpuSide.lights[1].projection, &m_lightConstBufferCpuSide.lights[1].view, m_viewPort.Width, m_viewPort.Width, near_plane, far_plane);
     m_lightCameras[2].Get3DViewProjMatricesForPointLight(&m_lightConstBufferCpuSide.lights[2].projection, &m_lightConstBufferCpuSide.lights[2].view, m_viewPort.Width, m_viewPort.Width, near_plane, far_plane);
 
-
     m_lightConstBufferCpuSide.lights[0].far_plane = far_plane;
     m_lightConstBufferCpuSide.lights[0].position = m_lightCameras->eye;
-
 
     m_lightConstBufferCpuSide.lights[1].far_plane = far_plane;
     m_lightConstBufferCpuSide.lights[1].position = m_lightCameras->eye;
@@ -468,8 +463,7 @@ void FrameResource::OnUpdatePerFrame()
     m_lightConstBufferCpuSide.lights[2].far_plane = far_plane;
     m_lightConstBufferCpuSide.lights[2].position = m_lightCameras->eye;
 
-
-    m_camera.Get3DViewProjMatrices(&m_sceneConstBufferCpuSide.view, &m_sceneConstBufferCpuSide.projection, 90.0f, m_viewPort.Width, m_viewPort.Height, 1.f, 25.f);
+    m_camera.Get3DViewProjMatrices(&m_sceneConstBufferCpuSide.view, &m_sceneConstBufferCpuSide.projection, 90.0f, m_viewPort.Width, m_viewPort.Height, 0.1f, 800.f);
     m_sceneConstBufferCpuSide.camera_pos = m_camera.eye;
 
     memcpy(m_mappedLightConstantBuffer, &m_lightConstBufferCpuSide, sizeof(m_lightConstBufferCpuSide));
@@ -798,6 +792,29 @@ void FrameResource::InitScenePassShaders()
         m_dxcCompiler,
         m_includeHandler);
 
+    //{
+
+    //    // wchar的hlsl文件路径
+    //    const std::wstring metax_vert_path = w_working_path + L"assets\\shaders\\plane_model\\scenePass.vert.hlsl";
+    //    const std::wstring metex_frag_path = w_working_path + L"assets\\shaders\\plane_model\\scenePass.frag.hlsl";
+
+    //    m_MetaxSceneVertexShader = DXC::CompileShader(
+    //        metax_vert_path, // Path to your shader file
+    //        L"main", // Entry point function name
+    //        L"vs_6_6", // Shader profile
+    //        m_dxcUtils,
+    //        m_dxcCompiler,
+    //        m_includeHandler);
+
+    //    m_MetaxScenePixelShader = DXC::CompileShader(
+    //        metex_frag_path, // Path to your shader file
+    //        L"main", // Entry point function name
+    //        L"ps_6_6", // Shader profile
+    //        m_dxcUtils,
+    //        m_dxcCompiler,
+    //        m_includeHandler);
+    //}
+
     // try {
     //     ThrowIfFailed(
     //         D3DCompileFromFile(vert_path.c_str(),
@@ -1001,15 +1018,15 @@ void FrameResource::InitShadowPassPSO()
 
     auto shadow_pass_rs = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 
-    shadow_pass_rs.DepthBias = 0;
-    shadow_pass_rs.DepthBiasClamp = 0.0f;
-    shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
+    // shadow_pass_rs.DepthBias = 0;
+    // shadow_pass_rs.DepthBiasClamp = 0.0f;
+    // shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
 
     // TODO:
-    //  shadow_pass_rs.DepthClipEnable = true;
-    //  shadow_pass_rs.DepthBias = 100000;
-    //  shadow_pass_rs.DepthBiasClamp = 0.0f;
-    //  shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
+    shadow_pass_rs.DepthClipEnable = true;
+    shadow_pass_rs.DepthBias = 100000;
+    shadow_pass_rs.DepthBiasClamp = 0.0f;
+    shadow_pass_rs.SlopeScaledDepthBias = 1.0f;
 
     pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     pso_desc.RasterizerState = shadow_pass_rs;
@@ -1032,9 +1049,8 @@ void FrameResource::InitShadowMap()
     const CD3DX12_RESOURCE_DESC shadow_tex_desc(
         D3D12_RESOURCE_DIMENSION_TEXTURE2D,
         0,
-        static_cast<UINT>(m_viewPort.Width),
-        static_cast<UINT>(m_viewPort.Width),
-
+        static_cast<UINT>(ShadowMapDimension),
+        static_cast<UINT>(ShadowMapDimension),
 
         6,
         1,
@@ -1092,17 +1108,6 @@ void FrameResource::InitShadowMapSampler()
     // used for the shadow map.
     m_currentSamplerCpuHandle = m_samplerHeapShaderVisible->GetCPUDescriptorHandleForHeapStart();
 
-    // D3D12_SAMPLER_DESC samplerDesc = {};
-    // samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR; // Linear filtering
-    // samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    // samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    // samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP; // Cubemaps wrap in all dimensions
-    // samplerDesc.MinLOD = 0; // Minimum mip level
-    // samplerDesc.MaxLOD = D3D12_FLOAT32_MAX; // Maximum mip level
-    // samplerDesc.MipLODBias = 0.0f;
-    // samplerDesc.MaxAnisotropy = 1; // No anisotropic filtering
-    // samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS; // Comparison function for shadows (not used here)
-
     D3D12_SAMPLER_DESC shadow_map_sampler = {};
     shadow_map_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT; // 对depth value不要用线性采样
     shadow_map_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -1111,7 +1116,6 @@ void FrameResource::InitShadowMapSampler()
     shadow_map_sampler.MipLODBias = 0.0f;
     shadow_map_sampler.MaxAnisotropy = 1;
     shadow_map_sampler.BorderColor[0] = shadow_map_sampler.BorderColor[1] = shadow_map_sampler.BorderColor[2] = shadow_map_sampler.BorderColor[3] = 1.f;
-
 
     shadow_map_sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
 

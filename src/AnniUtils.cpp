@@ -63,8 +63,8 @@ Microsoft::WRL::ComPtr<IDxcBlob> DXC::CompileShader(const std::wstring& filename
         L"/T", profile.c_str(),
         L"/E", entryPoint.c_str(),
         L"/Fo", (filename + L".cso").c_str(),
-		L"/Zi", L" ",   //for debug info
-		L"/Od", L" ",   //for debug info
+		L"/Zi", L" ",   //for debug info,
+		L"/Od", L" ",   //disbale opt
     };
 
     WRL::ComPtr<IDxcOperationResult> result;

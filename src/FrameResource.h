@@ -67,6 +67,7 @@ private:
 private:
     static constexpr UINT NumContexts = 3;
     static constexpr UINT NumLights = 3;
+    static constexpr UINT ShadowMapDimension = 1280;
 
     struct LightState {
         glm::float4 position;
@@ -134,6 +135,10 @@ private:
 
     WRL::ComPtr<IDxcBlob> m_sceneVertexShader;
     WRL::ComPtr<IDxcBlob> m_scenePixelShader;
+
+    //WRL::ComPtr<IDxcBlob> m_MetaxSceneVertexShader;
+    //WRL::ComPtr<IDxcBlob> m_MetaxScenePixelShader;
+
     WRL::ComPtr<ID3D12RootSignature> m_rootSignatureScene;
     WRL::ComPtr<ID3D12PipelineState> m_scenePSO;
 

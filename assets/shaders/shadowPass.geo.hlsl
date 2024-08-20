@@ -24,6 +24,7 @@ struct GSInput
 };
 
 
+
 struct GSOutput
 {
     float4 position : SV_POSITION;
@@ -36,11 +37,9 @@ struct GSOutput
 [maxvertexcount(18)] // Output a maximum of 18 vertices (3 per cubemap face)
 void main(triangle GSInput input[3], inout TriangleStream<GSOutput> tri_stream)
 {
-    
     // Output the vertex to each of the 6 cubemap faces
     for (int face_index = 0; face_index < 6; ++face_index)
     {
-
         // Output the transformed vertices for the current face
         GSOutput output[3];
         for (int i = 0; i < 3; i++) {
@@ -55,7 +54,6 @@ void main(triangle GSInput input[3], inout TriangleStream<GSOutput> tri_stream)
         tri_stream.Append(output[2]);
         tri_stream.RestartStrip();
     }
-
 }
 
 
