@@ -16,16 +16,16 @@ Renderer::Renderer(xwin::Window& window)
 
 Renderer::~Renderer()
 {
-    if (m_Swapchain) {
-        m_Swapchain->SetFullscreenState(false, nullptr);
-        m_Swapchain->Release();
-        m_Swapchain = nullptr;
-    }
+    //if (m_Swapchain) {
+    //    m_Swapchain->SetFullscreenState(false, nullptr);
+    //    m_Swapchain->Release();
+    //    m_Swapchain = nullptr;
+    //}
 
-    destroyCommands();
-    destroyFrameBuffer();
-    destroyResources();
-    destroyAPI();
+    //destroyCommands();
+    //destroyFrameBuffer();
+    //destroyResources();
+    //destroyAPI();
 }
 
 void Renderer::initializeAPI(xwin::Window& window)

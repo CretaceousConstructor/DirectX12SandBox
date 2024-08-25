@@ -643,6 +643,7 @@ void FrameResource::InitShadowPassRootSignature()
     // Light CONST BUFFER
     root_parameters[2].InitAsConstantBufferView(1, 0);
 
+
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init_1_1(
         root_parameters.size(),

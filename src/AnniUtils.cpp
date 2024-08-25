@@ -20,7 +20,6 @@ namespace Constants {
         { "TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 64,
             D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
     };
-
 }
 
 WRL::ComPtr<IDxcBlob> DXC::LoadFileAsDxcBlob(const std::wstring& filename, IDxcUtils* dxc_utils)
@@ -65,6 +64,7 @@ Microsoft::WRL::ComPtr<IDxcBlob> DXC::CompileShader(const std::wstring& filename
         L"/Fo", (filename + L".cso").c_str(),
 		L"/Zi", L" ",   //for debug info,
 		L"/Od", L" ",   //disbale opt
+        L"/I",  L"external/R560-developer"
     };
 
     WRL::ComPtr<IDxcOperationResult> result;

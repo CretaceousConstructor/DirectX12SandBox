@@ -57,15 +57,15 @@ CD3DX12_GPU_DESCRIPTOR_HANDLE GltfModel::GetGPUDescHandleToSamplers() const
 void GltfModel::CopyAllDescriptorsTo(ID3D12DescriptorHeap* shader_visible_cbv_srv_uva_heap, ID3D12DescriptorHeap* shader_visible_sampler_heap, CD3DX12_CPU_DESCRIPTOR_HANDLE* dest_shader_visible_cbv_srv_uav_heap_handle, CD3DX12_CPU_DESCRIPTOR_HANDLE* dest_shader_visible_sampler_heap_handle)
 {
 
-    // cbv srv uav heap ÅÅ²¼
-    // ËùÓÐ²ÄÖÊµÄ srv
-    // ËùÓÐmaterial const buffer(structured buffer)µÄ srv
-    // ËùÓÐloca matrices bufferµÄ cbv
+    // cbv srv uav heap ï¿½Å²ï¿½
+    // ï¿½ï¿½ï¿½Ð²ï¿½ï¿½Êµï¿½ srv
+    // ï¿½ï¿½ï¿½ï¿½material const buffer(structured buffer)ï¿½ï¿½ srv
+    // ï¿½ï¿½ï¿½ï¿½loca matrices bufferï¿½ï¿½ cbv
 
-    // sampler heap ÅÅ²¼
-    // ËùÓÐµÄsampler
+    // sampler heap ï¿½Å²ï¿½
+    // ï¿½ï¿½ï¿½Ðµï¿½sampler
 
-    // ÏÈcopy ËùÓÐµÄsampler
+    // ï¿½ï¿½copy ï¿½ï¿½ï¿½Ðµï¿½sampler
     {
         // Step 1: Get the starting GPU and CPU descriptor handles from the heap
         const D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle_start = shader_visible_sampler_heap->GetGPUDescriptorHandleForHeapStart();
@@ -87,9 +87,9 @@ void GltfModel::CopyAllDescriptorsTo(ID3D12DescriptorHeap* shader_visible_cbv_sr
         dest_shader_visible_sampler_heap_handle->Offset(m_num_samplers, m_samplerDescriptorSize);
     }
 
-    // ÏÈcopy ËùÓÐµÄ cbv srv uav£¬È»ºóÔÙ¼ÆËãË÷Òý
+    // ï¿½ï¿½copy ï¿½ï¿½ï¿½Ðµï¿½ cbv srv uavï¿½ï¿½È»ï¿½ï¿½ï¿½Ù¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
-    ////////                    bindless                  bindless          Ã¿´Îdraw callÓÃindexË÷Òý½øÐÐÌæ»»,TEMP_LOCAL_MATRICES_CBV_COUNTÊÇmagic number
+    ////////                    bindless                  bindless          Ã¿ï¿½ï¿½draw callï¿½ï¿½indexï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ»»,TEMP_LOCAL_MATRICES_CBV_COUNTï¿½ï¿½magic number
     const UINT copy_cout = m_texturesImages.size() + m_num_material_views + TEMP_LOCAL_MATRICES_CBV_COUNT;
     {
         m_pp_device->CopyDescriptorsSimple(
@@ -99,7 +99,7 @@ void GltfModel::CopyAllDescriptorsTo(ID3D12DescriptorHeap* shader_visible_cbv_sr
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     }
 
-    // ¼ÆËãË÷Òý
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     // CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpu_desc_handle_to_texture_srvs;
     // CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpu_desc_handle_to_mat_consts_srvs;
     // CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpu_desc_handle_to_local_matrices_cbv;
@@ -123,7 +123,7 @@ void GltfModel::CopyAllDescriptorsTo(ID3D12DescriptorHeap* shader_visible_cbv_sr
         m_gpu_desc_handle_to_local_matrices_cbv.Offset(m_num_material_views, m_cbvSrvUavDescriptorSize);
     }
 
-    // ±ðÍüÁË×îºóoffset´«ÈëµÄshader visible heapµÄhandle
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½offsetï¿½ï¿½ï¿½ï¿½ï¿½shader visible heapï¿½ï¿½handle
     dest_shader_visible_cbv_srv_uav_heap_handle->Offset(copy_cout, m_cbvSrvUavDescriptorSize);
 }
 
@@ -269,7 +269,7 @@ void GltfModel::LoadFromFile(const std::string gltf_file_path)
     //> LOAD ALL TEXTURES
     // Describe and create a cbvSrvUav descriptor heap.
     D3D12_DESCRIPTOR_HEAP_DESC cbv_srv_uav_heap_desc = {};
-    // TODO: ÐÞ¸ÄcbvµÄÊýÄ¿£¬Ä¿Ç°ÔÝÊ±Ëã×÷200
+    // TODO: ï¿½Þ¸ï¿½cbvï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Ä¿Ç°ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½200
     cbv_srv_uav_heap_desc.NumDescriptors = gltf.images.size() + gltf.materials.size() + TEMP_LOCAL_MATRICES_CBV_COUNT; // 200 extra for cbv
     cbv_srv_uav_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     cbv_srv_uav_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
@@ -289,7 +289,7 @@ void GltfModel::LoadFromFile(const std::string gltf_file_path)
         int width, height, nrChannels;
         // std::string img_name = image.name.c_str();
 
-        constexpr auto loading_format_of_image = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: ÄÑ±À£¬ÔõÃ´ÓÃUNORM¶ÁµÄ
+        constexpr auto loading_format_of_image = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: ï¿½Ñ±ï¿½ï¿½ï¿½ï¿½ï¿½Ã´ï¿½ï¿½UNORMï¿½ï¿½ï¿½ï¿½
         //
         //        const auto img_visitor = fastgltf::visitor {
         //            [](auto& arg) {},
@@ -523,7 +523,7 @@ void GltfModel::LoadFromFile(const std::string gltf_file_path)
         //            }
         //        };
         //
-        //        // image.dataµÄÀàÐÍ¾ÍÊÇ
+        //        // image.dataï¿½ï¿½ï¿½ï¿½ï¿½Í¾ï¿½ï¿½ï¿½
         //        // using DataSource = std::variant<std::monostate, sources::BufferView, sources::URI, sources::Vector, sources::CustomBuffer, sources::ByteView, sources::Fallback>;
         //        std::visit(img_visitor, image.data);
 
@@ -811,7 +811,7 @@ void GltfModel::LoadFromFile(const std::string gltf_file_path)
 
     m_materialConstantDataBuffer = cbvSrvUavHandle;
 
-    // ÓÃbindless£¬µ«ÊÇÒ²¿ÉÒÔÓÃÒ»¸östructured buffer°ó¶¨elementµÈÓÚ0 µ½ elementµÈÓÚmaterials.size() - 1;µÄ·¶Î§£¬ÕâÑù¾ÍÖ»ÓÃÒ»¸ösrv slot£¬Ã¿´Î»»Ä£ÐÍ¾Í»»°ó
+    // ï¿½ï¿½bindlessï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½structured bufferï¿½ï¿½elementï¿½ï¿½ï¿½ï¿½0 ï¿½ï¿½ elementï¿½ï¿½ï¿½ï¿½materials.size() - 1;ï¿½Ä·ï¿½Î§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö»ï¿½ï¿½Ò»ï¿½ï¿½srv slotï¿½ï¿½Ã¿ï¿½Î»ï¿½Ä£ï¿½Í¾Í»ï¿½ï¿½ï¿½
     for (auto i = 0; i < gltf.materials.size(); i++) {
         D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
         srv_desc.Format = DXGI_FORMAT_UNKNOWN;
@@ -1026,7 +1026,6 @@ void GltfModel::LoadFromFile(const std::string gltf_file_path)
         }
 
         // Create the vertex buffer.
-
         {
             const UINT32 vertex_data_size = vertices.size() * sizeof(StandardVertex);
 
@@ -1215,7 +1214,7 @@ void GltfModel::LoadFromFile(const std::string gltf_file_path)
     //< pre record draw context
 
     //> CREATE LOCAL MATRIX BUFFER
-    // Ã¿Ò»¸öäÖÈ¾¼ÇÂ¼¶¼ÓÐÒ»¸öfinal matrix
+    // Ã¿Ò»ï¿½ï¿½ï¿½ï¿½È¾ï¿½ï¿½Â¼ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½final matrix
     constexpr UINT aligned_size_cbuffer = (sizeof(glm::mat4) + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) & ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
     const UINT size_of_local_matrices_buffer = aligned_size_cbuffer * m_draw_ctx.OpaqueSurfaces.size();
 
